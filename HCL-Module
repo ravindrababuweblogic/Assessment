@@ -1,0 +1,124 @@
+# File: `modules/app_service/main.tf`
+
+# Module declaration
+module "app_service" {
+  # Module metadata
+  description = "Deploys an Azure App Service within a Virtual Network with staging slots"
+
+  # Module variables
+  variable "resource_group_name" {
+    type        = string
+    description = "Resource group name"
+  }
+
+  variable "location" {
+    type        = string
+    description = "Location for the App Service"
+  }
+
+  variable "app_service_name" {
+    type        = string
+    description = "Name of the App Service"
+  }
+
+  variable "virtual_network_name" {
+    type        = string
+    description = "Name of the Virtual Network"
+  }
+
+  variable "subnet_name" {
+    type        = string
+    description = "Name of the Subnet"
+  }
+
+  variable "app_service_plan_tier" {
+    type        = string
+    description = "Tier of the App Service Plan (e.g., Free, Shared, Basic, Standard, Premium)"
+  }
+
+  variable "app_service_plan_size" {
+    type        = string
+    description = "Size of the App Service Plan (e.g., Small, Medium, Large)"
+  }
+
+  # Azure Provider
+  provider "azurerm" {
+    version = "2.34.0"
+  }
+
+  # Resource Group
+  resource "azurerm_resource_group" "example" {
+    name     = var.resource_group_name
+    location = var.location
+  }
+
+  # Virtual Network
+  data "azurerm_virtual_network" "example" {
+    name                = var.virtual_network_name
+    resource_group_name = azurerm_resource_group.example.name
+  }
+
+  # Subnet
+  data "azurerm_subnet" "example" {
+    name                 = var.subnet_name
+    virtual_network_name = data.azurerm_virtual_network.example.name
+    resource_group_name  = azurerm_resource_group.example.name
+  }
+
+  # App Service Plan
+  resource "azurerm_app_service_plan" "example" {
+    name                = "${var.app_service_name}-plan"
+    resource_group_name = azurerm_resource_group.example.name
+    location            = var.location
+    kind                = "linux"
+
+    sku {
+      tier = var.app_service_plan_tier
+      size = var.app_service_plan_size
+    }
+  }
+
+  # App Service
+  resource "azurerm_app_service" "example" {
+    name                = var.app_service_name
+    resource_group_name = azurerm_resource_group.example.name
+    location            = var.location
+    app_service_plan_id = azurerm_app_service_plan.example.id
+
+    site_config {
+      linux_fx_version = "NODE|14-lts"
+    }
+
+    app_settings = {
+      "WEBSITE_NODE_DEFAULT_VERSION" = "14.17.0"
+    }
+
+    connection_string {
+      name  = "Database"
+      type  = "SQLServer"
+      value = "Server=tcp:example.database.windows.net,1433;Database=mydatabase;User ID=myuser;Password=mypassword;"
+    }
+  }
+
+  # Staging Slot
+  resource "azurerm_app_service_slot" "staging" {
+    name                = "staging"
+    app_service_name    = azurerm_app_service.example.name
+    resource_group_name = azurerm_resource_group.example.name
+    location            = var.location
+
+    site_config {
+      linux_fx_version = "NODE|14-lts"
+    }
+
+    app_settings = {
+      "WEBSITE_NODE_DEFAULT_VERSION" = "14.17.0"
+    }
+  }
+
+  # Virtual Network Integration
+  resource "azurerm_app_service_virtual_network_swift_connection" "example" {
+    app_service_id = azurerm_app_service.example.id
+    subnet_id      = data.azurerm_subnet.example.id
+  }
+}
